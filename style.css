@@ -1,0 +1,274 @@
+/* ── 자체 호스팅 웹폰트 ──────────────────────────────────
+   맥/윈도우/모바일에서 글자 폭이 동일해지도록 폰트를 직접 싣는다.
+   (기존 SF Mono·Menlo는 맥 전용이라 윈도우에서 Consolas로 떨어지며 레이아웃이 밀림) */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/jetbrains-mono-latin.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+                 U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191,
+                 U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/jetbrains-mono-latin-ext.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+                 U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
+                 U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  --shadow-color: 70, 58, 46;
+  --board-aspect: 1824 / 2312;
+  /* 보드 표시 높이 — 배경과 보드가 같은 스케일로 맞물리는 기준 */
+  --stage-h: min(100vh, calc(100vw * 2312 / 1824));
+  /* 보드 실제 폭 — 좌우 여백 계산에 사용 */
+  --stage-w: calc(var(--stage-h) * 1824 / 2312);
+  /* 사이드 타이틀이 화면 왼쪽 끝에서 떨어지는 거리 */
+  --side-gap: clamp(10px, 2.2vw, 44px);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+/* 윈도우는 스크롤바가 화면 폭을 실제로 차지한다.
+   자리를 미리 확보해 두어 OS에 따라 보드 크기가 달라지지 않게 한다. */
+html {
+  scrollbar-gutter: stable;
+  overflow-x: hidden;
+}
+
+body {
+  background-color: #dbd8d2;
+  background-image: url("assets/wall-wide.jpg");
+  background-size: auto var(--stage-h);
+  background-position: center;
+  background-repeat: repeat-x;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+/* 보드(구운 이미지)가 화면에 맞게 들어가는 무대 */
+.stage {
+  position: relative;
+  aspect-ratio: var(--board-aspect);
+  height: var(--stage-h);
+  user-select: none;
+}
+
+.board-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.overlays {
+  position: absolute;
+  inset: 0;
+}
+
+/* 사진 카드 오버레이 — JS가 % 좌표로 배치 */
+a.photo-slot {
+  position: absolute;
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0;
+  animation: settle 0.5s ease-out forwards;
+  animation-delay: var(--delay, 0s);
+  transition: transform 0.25s ease, filter 0.25s ease;
+  transform: rotate(var(--rot, 0deg));
+}
+
+@keyframes settle {
+  from { opacity: 0; transform: translateY(6px) rotate(var(--rot, 0deg)); }
+  to   { opacity: 1; transform: translateY(0)   rotate(var(--rot, 0deg)); }
+}
+
+a.photo-slot img.photo-img {
+  position: absolute;
+  /* left / top / width / height는 카드별 내접 박스 기반으로 JS가 인라인 지정 */
+  object-fit: cover;
+  display: block;
+}
+
+a.photo-slot:hover,
+a.photo-slot:focus-visible {
+  transform: rotate(var(--rot, 0deg)) scale(1.022);
+  filter: drop-shadow(3px 7px 9px rgba(var(--shadow-color), 0.28));
+  z-index: 5;
+}
+
+a.photo-slot img.pin {
+  position: absolute;
+  /* left / top / width는 카드별 측정값으로 JS가 인라인 지정 */
+  transform: translate(-30%, -28%);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* 호버 시 사진 위에 깔리는 어두운 필름 — 캡션 가독성 확보 */
+a.photo-slot .scrim {
+  position: absolute;
+  /* 사진 영역과 동일한 위치/크기를 JS가 인라인 지정 */
+  background: linear-gradient(
+    to bottom,
+    rgba(20, 17, 14, 0.10) 0%,
+    rgba(20, 17, 14, 0.34) 45%,
+    rgba(20, 17, 14, 0.10) 100%
+  );
+  opacity: 0;
+  transition: opacity 0.28s ease;
+  pointer-events: none;
+  z-index: 2;
+}
+
+a.photo-slot:hover .scrim,
+a.photo-slot:focus-visible .scrim { opacity: 1; }
+
+/* 캡션 — 사진 정중앙 */
+a.photo-slot .caption {
+  position: absolute;
+  top: 50%;
+  left: 8%;
+  right: 8%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* 캡션 밑줄 — 호버 시 좌→우로 그어짐 */
+a.photo-slot .caption::after {
+  content: "";
+  display: block;
+  width: 0;
+  height: 1px;
+  margin: 7px auto 0;
+  background: rgba(255, 255, 255, 0.85);
+  transition: width 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) 0.1s;
+}
+
+a.photo-slot:hover .caption,
+a.photo-slot:focus-visible .caption { opacity: 1; }
+
+a.photo-slot:hover .caption::after,
+a.photo-slot:focus-visible .caption::after { width: 42%; }
+
+.identity {
+  position: absolute;
+  top: 0.9%;
+  left: 6%;
+  text-align: left;
+  pointer-events: none;
+}
+
+.identity-line1 {
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(58, 50, 42, 0.82);
+  line-height: 1.2;
+}
+
+.identity-line2 {
+  margin-top: 4px;
+  font-size: 13px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(58, 50, 42, 0.5);
+  line-height: 1.2;
+}
+
+.signature {
+  position: absolute;
+  bottom: 1.8%;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(72, 62, 52, 0.62);
+}
+
+.signature .sig-dot {
+  letter-spacing: 0;
+  opacity: 0.45;
+}
+
+.signature #sigEmail {
+  font-size: 10.2px;
+  letter-spacing: 0.06em;
+  color: rgba(72, 62, 52, 0.48);
+}
+
+/* 전 카드 공통 핀 스프라이트 — 볼 중심이 anchor에 오도록 보정 */
+.board-pin {
+  position: absolute;
+  transform: translate(-30%, -28%);
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* 왼쪽 여백 사이드 타이틀 (PNG) — 보드는 중앙 고정, 여백 안에만 들어감.
+   assets/side-title.png 파일을 넣으면 자동으로 표시됩니다.
+   기본은 숨김: 가로로 긴 모니터에서만 나타납니다. */
+.side-mark {
+  display: none;
+  position: fixed;
+  left: var(--side-gap);
+  top: 50%;
+  transform: translateY(-50%);
+  height: 90vh;
+  /* 보드를 침범하지 않도록 폭을 왼쪽 여백 안으로 제한 */
+  width: calc((100vw - var(--stage-w)) / 2 - var(--side-gap) - 12px);
+  background-image: url("assets/side-title.png");
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: contain;
+  pointer-events: none;
+  user-select: none;
+  z-index: 2;
+}
+
+/* 가로가 긴 화면(가로:세로 >= 1.4)이고 충분히 넓을 때만 표시.
+   16:9(1.78) · 16:10(1.60) · 3:2(1.50) 모니터 = 표시
+   4:3 태블릿(1.33) · 세로 화면 · 좁은 창 = 숨김 */
+@media (min-width: 1200px) and (min-aspect-ratio: 14 / 10) {
+  .side-mark { display: block; }
+}
+
+/* 장식 스티커 — 카드 위에 얹히지만 클릭/호버에 관여하지 않음.
+   그림자 2겹: 접지면의 좁고 진한 그림자 + 넓게 퍼지는 은은한 그림자.
+   보드 광원이 좌측 상단이므로 우측 하단으로 떨어짐.
+   vh 단위라 창 크기에 따라 그림자도 같이 스케일됨. */
+.decor {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  z-index: 6;
+  filter:
+    drop-shadow(0.08vh 0.12vh 0.16vh rgba(var(--shadow-color), 0.38))
+    drop-shadow(0.3vh 0.5vh 0.75vh rgba(var(--shadow-color), 0.2));
+}
